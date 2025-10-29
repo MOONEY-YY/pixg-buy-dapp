@@ -22,38 +22,36 @@
     <br>
     <input id="amount" type="number" placeholder="USDT 金额 (e.g. 0.1)" step="0.01">
     <br><br>
-    <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
+    <button id="buyButton" onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
     <p id="status"></p>
 
-    <!-- 稳定CDN -->
+    <!-- 稳定CDN路径 -->
     <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
     <script>
-        // 等待ethers加载
+        // 全局检查
         if (typeof ethers === 'undefined') {
-            document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面或检查网络。';
+            document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面试试 (或检查网络)。';
             document.getElementById('status').className = 'error';
         } else {
             const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
             const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
             let provider, signer;
 
-            async function init() {
+            // 连接钱包
+            async function connectWallet() {
                 try {
                     if (typeof window.ethereum === 'undefined') {
-                        document.getElementById('status').innerText = '错误: 安装 MetaMask 扩展！';
-                        document.getElementById('status').className = 'error';
-                        return;
+                        throw new Error('安装 MetaMask 扩展！');
                     }
                     provider = new ethers.providers.Web3Provider(window.ethereum);
                     await provider.send("eth_requestAccounts", []);
                     signer = provider.getSigner();
                     const network = await provider.getNetwork();
                     if (network.chainId !== 8453) {
-                        document.getElementById('status').innerText = '错误: 切换到 Base 链 (Chain ID 8453)!';
-                        document.getElementById('status').className = 'error';
-                        return;
+                        throw new Error('切换到 Base 链 (Chain ID 8453)!');
                     }
-                    const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
+                    const usdtAbi = ['function balanceOf(address) view returns (uint256)'];
+                    const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
                     const balance = await usdt.balanceOf(await signer.getAddress());
                     document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
                 } catch (e) {
@@ -62,7 +60,12 @@
                 }
             }
 
+            // 买PIXG
             async function buyPixg() {
+                if (!signer) {
+                    await connectWallet();
+                    return;
+                }
                 try {
                     const amountUsdt = parseFloat(document.getElementById('amount').value);
                     if (!amountUsdt || amountUsdt <= 0) throw new Error('输入有效金额 >0');
@@ -122,7 +125,8 @@
                 }
             }
 
-            window.onload = init;
+            // 自动初始化
+            window.addEventListener('load', connectWallet);
         }
     </script>
 </body>
