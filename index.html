@@ -25,33 +25,57 @@
     <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
     <p id="status"></p>
 
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/lib/ethers.umd.min.js"></script>
     <script>
-        const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d'; // 合约地址
-        const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'; // USDT
-        let provider, signer;
-
-        async function init() {
-            if (typeof window.ethereum !== 'undefined') {
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                await provider.send("eth_requestAccounts", []);
-                signer = provider.getSigner();
-                const network = await provider.getNetwork();
-                if (network.chainId !== 8453) {
-                    document.getElementById('status').innerText = '错误: 切换到 Base 链 (Chain ID 8453)!';
-                    document.getElementById('status').className = 'error';
-                    return;
-                }
-                const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
-                const balance = await usdt.balanceOf(await signer.getAddress());
-                document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
-            } else {
-                document.getElementById('status').innerText = '请安装 MetaMask！';
+        let ethers;
+        (async () => {
+            try {
+                ethers = await import('https://cdn.jsdelivr.net/npm/ethers@5.7.2/lib/ethers.umd.min.js').then(m => m.ethers);
+            } catch (e) {
+                console.error('Ethers load failed:', e);
+                document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面试试。';
                 document.getElementById('status').className = 'error';
+                return;
             }
-        }
+            // Ethers loaded, run init
+            const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
+            const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
+            let provider, signer;
+
+            async function init() {
+                try {
+                    if (typeof window.ethereum === 'undefined') {
+                        document.getElementById('status').innerText = '错误: 安装 MetaMask 扩展！';
+                        document.getElementById('status').className = 'error';
+                        return;
+                    }
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    await provider.send("eth_requestAccounts", []);
+                    signer = provider.getSigner();
+                    const network = await provider.getNetwork();
+                    if (network.chainId !== 8453) {
+                        document.getElementById('status').innerText = '错误: 切换到 Base 链 (Chain ID 8453)!';
+                        document.getElementById('status').className = 'error';
+                        return;
+                    }
+                    const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
+                    const balance = await usdt.balanceOf(await signer.getAddress());
+                    document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
+                } catch (e) {
+                    document.getElementById('status').innerText = '连接失败: ' + e.message + '。刷新页面或检查 MetaMask。';
+                    document.getElementById('status').className = 'error';
+                }
+            }
+
+            window.onload = init;
+        })();
 
         async function buyPixg() {
+            if (typeof ethers === 'undefined') {
+                document.getElementById('status').innerText = '错误: Ethers库未加载。刷新页面。';
+                document.getElementById('status').className = 'error';
+                return;
+            }
             try {
                 const amountUsdt = parseFloat(document.getElementById('amount').value);
                 if (!amountUsdt || amountUsdt <= 0) throw new Error('输入有效金额 >0');
@@ -86,7 +110,7 @@
                 };
                 const message = {
                     owner: await signer.getAddress(),
-                    spender: PIXG_ADDRESS,
+                    spender: '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d',
                     value: amount,
                     nonce: nonce,
                     deadline: deadline
@@ -99,7 +123,7 @@
                 const pixgAbi = [
                     "function magicDeposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external"
                 ];
-                const pixg = new ethers.Contract(PIXG_ADDRESS, pixgAbi, signer);
+                const pixg = new ethers.Contract('0xc6f8b19d3a5b85f40a0b3b8e3e73f2d', pixgAbi, signer);
 
                 const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1000000 });
                 document.getElementById('status').innerText = '交易发送！哈希: ' + tx.hash + ' <a href="https://basescan.org/tx/' + tx.hash + '" target="_blank">查看</a>';
@@ -110,8 +134,6 @@
                 document.getElementById('status').className = 'error';
             }
         }
-
-        window.onload = init;
     </script>
 </body>
 </html>
