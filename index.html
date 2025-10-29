@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>一键买 PIXG - Base 链</title>
+    <style>
+        body { font-family: Arial; text-align: center; background: #f0f8ff; color: #333; }
+        h1 { color: #4CAF50; }
+        input { padding: 12px; font-size: 16px; width: 200px; border-radius: 5px; border: 1px solid #ccc; }
+        button { padding: 12px 24px; font-size: 16px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        #status { margin: 20px; padding: 10px; border-radius: 5px; background: #e8f5e8; }
+        .error { background: #ffebee; color: #c62828; }
+        a { color: #2196F3; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>🚀 PIXG 代币一键购买</h1>
+    <p><strong>合约地址:</strong> <a href="https://basescan.org/address/0xc6f8b19d3a5b85f40a0b3b8e3e73f2d" target="_blank">0xc6f8b19d3a5b85f40a0b3b8e3e73f2d</a> (已验证)</p>
+    <p><strong>开源代码:</strong> <a href="https://github.com/MOONEY-Y/pixg-buy-dapp" target="_blank">GitHub</a></p>
+    <br>
+    <input id="amount" type="number" placeholder="USDT 金额 (e.g. 0.1)" step="0.01">
+    <br><br>
+    <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
+    <p id="status"></p>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+    <script>
+        const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d'; // 合约地址
+        const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'; // USDT
+        let provider, signer;
+
+        async function init() {
+            if (typeof window.ethereum !== 'undefined') {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                const network = await provider.getNetwork();
+                if (network.chainId !== 8453) {
+                    document.getElementById('status').innerText = '错误: 切换到 Base 链 (Chain ID 8453)!';
+                    document.getElementById('status').className = 'error';
+                    return;
+                }
+                const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
+                const balance = await usdt.balanceOf(await signer.getAddress());
+                document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
+            } else {
+                document.getElementById('status').innerText = '请安装 MetaMask！';
+                document.getElementById('status').className = 'error';
+            }
+        }
+
+        async function buyPixg() {
+            try {
+                const amountUsdt = parseFloat(document.getElementById('amount').value);
+                if (!amountUsdt || amountUsdt <= 0) throw new Error('输入有效金额 >0');
+                const amount = ethers.utils.parseUnits(amountUsdt.toString(), 6);
+                const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+                document.getElementById('status').innerText = '准备签名 Permit...';
+                document.getElementById('status').className = '';
+
+                const usdtAbi = [
+                    "function permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline) external",
+                    "function nonces(address owner) view returns (uint256)"
+                ];
+                const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
+
+                const nonce = await usdt.nonces(await signer.getAddress());
+
+                const domain = {
+                    name: 'USD Tether',
+                    version: '2',
+                    chainId: 8453,
+                    verifyingContract: USDT_ADDRESS
+                };
+                const types = {
+                    Permit: [
+                        { name: 'owner', type: 'address' },
+                        { name: 'spender', type: 'address' },
+                        { name: 'value', type: 'uint256' },
+                        { name: 'nonce', type: 'uint256' },
+                        { name: 'deadline', type: 'uint256' }
+                    ]
+                };
+                const message = {
+                    owner: await signer.getAddress(),
+                    spender: PIXG_ADDRESS,
+                    value: amount,
+                    nonce: nonce,
+                    deadline: deadline
+                };
+                const sig = await signer._signTypedData(domain, types, message);
+                const { v, r, s } = ethers.utils.splitSignature(sig);
+
+                document.getElementById('status').innerText = '签名成功！发送交易...';
+
+                const pixgAbi = [
+                    "function magicDeposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external"
+                ];
+                const pixg = new ethers.Contract(PIXG_ADDRESS, pixgAbi, signer);
+
+                const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1000000 });
+                document.getElementById('status').innerText = '交易发送！哈希: ' + tx.hash + ' <a href="https://basescan.org/tx/' + tx.hash + '" target="_blank">查看</a>';
+                await tx.wait();
+                document.getElementById('status').innerText = '🎉 成功！得了 ' + (amountUsdt * 10000) + ' PIXG + LP 已添加。刷新余额！';
+            } catch (e) {
+                document.getElementById('status').innerText = '错误: ' + e.message + '。检查 USDT 余额/Network/Gas。';
+                document.getElementById('status').className = 'error';
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
