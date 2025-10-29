@@ -22,15 +22,14 @@
     <br>
     <input id="amount" type="number" placeholder="USDT 金额 (e.g. 0.1)" step="0.01">
     <br><br>
-    <button id="buyButton" onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
+    <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
     <p id="status"></p>
 
-    <!-- 稳定CDN路径 -->
-    <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
     <script>
-        // 全局检查
+        // 检查ethers加载
         if (typeof ethers === 'undefined') {
-            document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面试试 (或检查网络)。';
+            document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面或试VPN。';
             document.getElementById('status').className = 'error';
         } else {
             const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
@@ -50,8 +49,7 @@
                     if (network.chainId !== 8453) {
                         throw new Error('切换到 Base 链 (Chain ID 8453)!');
                     }
-                    const usdtAbi = ['function balanceOf(address) view returns (uint256)'];
-                    const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
+                    const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
                     const balance = await usdt.balanceOf(await signer.getAddress());
                     document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
                 } catch (e) {
@@ -125,8 +123,8 @@
                 }
             }
 
-            // 自动初始化
-            window.addEventListener('load', connectWallet);
+            // 自动连接
+            window.onload = connectWallet;
         }
     </script>
 </body>
