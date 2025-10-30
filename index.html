@@ -25,107 +25,112 @@
     <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
     <p id="status"></p>
 
-    <script type="text/javascript" src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <!-- 稳定CDN + defer加载 (后加载，避免冲突) -->
+    <script defer src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
     <script>
-        // 检查ethers加载
-        if (typeof ethers === 'undefined') {
-            document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面或试VPN。';
-            document.getElementById('status').className = 'error';
-        } else {
-            const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
-            const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
-            let provider, signer;
+        // 全局变量
+        const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
+        const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
+        let provider, signer;
 
-            // 连接钱包
-            async function connectWallet() {
-                try {
-                    if (typeof window.ethereum === 'undefined') {
-                        throw new Error('安装 MetaMask 扩展！');
-                    }
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
-                    await provider.send("eth_requestAccounts", []);
-                    signer = provider.getSigner();
-                    const network = await provider.getNetwork();
-                    if (network.chainId !== 8453) {
-                        throw new Error('切换到 Base 链 (Chain ID 8453)!');
-                    }
-                    const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
-                    const balance = await usdt.balanceOf(await signer.getAddress());
-                    document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
-                } catch (e) {
-                    document.getElementById('status').innerText = '连接失败: ' + e.message + '。刷新页面或检查 MetaMask。';
-                    document.getElementById('status').className = 'error';
-                }
+        // 加载检查 & 连接
+        function loadAndConnect() {
+            if (typeof ethers === 'undefined') {
+                document.getElementById('status').innerText = '错误: Ethers库加载失败。刷新页面 (Ctrl+F5) 或试VPN。';
+                document.getElementById('status').className = 'error';
+                return;
             }
-
-            // 买PIXG
-            async function buyPixg() {
-                if (!signer) {
-                    await connectWallet();
-                    return;
-                }
-                try {
-                    const amountUsdt = parseFloat(document.getElementById('amount').value);
-                    if (!amountUsdt || amountUsdt <= 0) throw new Error('输入有效金额 >0');
-                    const amount = ethers.utils.parseUnits(amountUsdt.toString(), 6);
-                    const deadline = Math.floor(Date.now() / 1000) + 3600;
-
-                    document.getElementById('status').innerText = '准备签名 Permit...';
-                    document.getElementById('status').className = '';
-
-                    const usdtAbi = [
-                        "function permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline) external",
-                        "function nonces(address owner) view returns (uint256)"
-                    ];
-                    const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
-
-                    const nonce = await usdt.nonces(await signer.getAddress());
-
-                    const domain = {
-                        name: 'USD Tether',
-                        version: '2',
-                        chainId: 8453,
-                        verifyingContract: USDT_ADDRESS
-                    };
-                    const types = {
-                        Permit: [
-                            { name: 'owner', type: 'address' },
-                            { name: 'spender', type: 'address' },
-                            { name: 'value', type: 'uint256' },
-                            { name: 'nonce', type: 'uint256' },
-                            { name: 'deadline', type: 'uint256' }
-                        ]
-                    };
-                    const message = {
-                        owner: await signer.getAddress(),
-                        spender: PIXG_ADDRESS,
-                        value: amount,
-                        nonce: nonce,
-                        deadline: deadline
-                    };
-                    const sig = await signer._signTypedData(domain, types, message);
-                    const { v, r, s } = ethers.utils.splitSignature(sig);
-
-                    document.getElementById('status').innerText = '签名成功！发送交易...';
-
-                    const pixgAbi = [
-                        "function magicDeposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external"
-                    ];
-                    const pixg = new ethers.Contract(PIXG_ADDRESS, pixgAbi, signer);
-
-                    const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1000000 });
-                    document.getElementById('status').innerText = '交易发送！哈希: ' + tx.hash + ' <a href="https://basescan.org/tx/' + tx.hash + '" target="_blank">查看</a>';
-                    await tx.wait();
-                    document.getElementById('status').innerText = '🎉 成功！得了 ' + (amountUsdt * 10000) + ' PIXG + LP 已添加。刷新余额！';
-                } catch (e) {
-                    document.getElementById('status').innerText = '错误: ' + e.message + '。检查 USDT 余额/Network/Gas。';
-                    document.getElementById('status').className = 'error';
-                }
-            }
-
-            // 自动连接
-            window.onload = connectWallet;
+            connectWallet();
         }
+
+        async function connectWallet() {
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    throw new Error('安装 MetaMask 扩展！');
+                }
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                const network = await provider.getNetwork();
+                if (network.chainId !== 8453) {
+                    throw new Error('切换到 Base 链 (Chain ID 8453)!');
+                }
+                const usdt = new ethers.Contract(USDT_ADDRESS, ['function balanceOf(address) view returns (uint256)'], signer);
+                const balance = await usdt.balanceOf(await signer.getAddress());
+                document.getElementById('status').innerText = '钱包已连接！USDT 余额: ' + ethers.utils.formatUnits(balance, 6) + '。准备买 PIXG。';
+            } catch (e) {
+                document.getElementById('status').innerText = '连接失败: ' + e.message + '。刷新页面或检查 MetaMask。';
+                document.getElementById('status').className = 'error';
+            }
+        }
+
+        // 买PIXG函数 (全局定义)
+        async function buyPixg() {
+            if (!signer) {
+                await connectWallet();
+                return;
+            }
+            try {
+                const amountUsdt = parseFloat(document.getElementById('amount').value);
+                if (!amountUsdt || amountUsdt <= 0) throw new Error('输入有效金额 >0');
+                const amount = ethers.utils.parseUnits(amountUsdt.toString(), 6);
+                const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+                document.getElementById('status').innerText = '准备签名 Permit...';
+                document.getElementById('status').className = '';
+
+                const usdtAbi = [
+                    "function permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline) external",
+                    "function nonces(address owner) view returns (uint256)"
+                ];
+                const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
+
+                const nonce = await usdt.nonces(await signer.getAddress());
+
+                const domain = {
+                    name: 'USD Tether',
+                    version: '2',
+                    chainId: 8453,
+                    verifyingContract: USDT_ADDRESS
+                };
+                const types = {
+                    Permit: [
+                        { name: 'owner', type: 'address' },
+                        { name: 'spender', type: 'address' },
+                        { name: 'value', type: 'uint256' },
+                        { name: 'nonce', type: 'uint256' },
+                        { name: 'deadline', type: 'uint256' }
+                    ]
+                };
+                const message = {
+                    owner: await signer.getAddress(),
+                    spender: PIXG_ADDRESS,
+                    value: amount,
+                    nonce: nonce,
+                    deadline: deadline
+                };
+                const sig = await signer._signTypedData(domain, types, message);
+                const { v, r, s } = ethers.utils.splitSignature(sig);
+
+                document.getElementById('status').innerText = '签名成功！发送交易...';
+
+                const pixgAbi = [
+                    "function magicDeposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external"
+                ];
+                const pixg = new ethers.Contract(PIXG_ADDRESS, pixgAbi, signer);
+
+                const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1000000 });
+                document.getElementById('status').innerText = '交易发送！哈希: ' + tx.hash + ' <a href="https://basescan.org/tx/' + tx.hash + '" target="_blank">查看</a>';
+                await tx.wait();
+                document.getElementById('status').innerText = '🎉 成功！得了 ' + (amountUsdt * 10000) + ' PIXG + LP 已添加。刷新余额！';
+            } catch (e) {
+                document.getElementById('status').innerText = '错误: ' + e.message + '。检查 USDT 余额/Network/Gas。';
+                document.getElementById('status').className = 'error';
+            }
+        }
+
+        // 页面加载后执行
+        window.addEventListener('load', loadAndConnect);
     </script>
 </body>
 </html>
