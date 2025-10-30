@@ -25,27 +25,8 @@
     <button onclick="buyPixg()">💰 买 PIXG (1 USDT = 10,000 PIXG)</button>
     <p id="status"></p>
 
-    <!-- 稳定CDN + 加载检查 -->
+    <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
     <script>
-        // 手动加载ethers，避免冲突
-        (function() {
-            var script = document.createElement('script');
-            script.src = 'https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js';
-            script.onload = function() {
-                if (typeof ethers !== 'undefined') {
-                    connectWallet();
-                } else {
-                    document.getElementById('status').innerText = '错误: Ethers加载失败。刷新页面 (Ctrl+F5)。';
-                    document.getElementById('status').className = 'error';
-                }
-            };
-            script.onerror = function() {
-                document.getElementById('status').innerText = '错误: 网络问题，Ethers加载失败。试VPN或刷新。';
-                document.getElementById('status').className = 'error';
-            };
-            document.head.appendChild(script);
-        })();
-
         const PIXG_ADDRESS = '0xc6f8b19d3a5b85f40a0b3b8e3e73f2d';
         const USDT_ADDRESS = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
         let provider, signer;
@@ -85,13 +66,24 @@
                 document.getElementById('status').innerText = '准备签名 Permit...';
                 document.getElementById('status').className = '';
 
+                // 先手动 approve fallback
+                document.getElementById('status').innerText = '检查 approve...';
+                const usdt = new ethers.Contract(USDT_ADDRESS, ['function allowance(address owner, address spender) view returns (uint256)'], signer);
+                const allowance = await usdt.allowance(await signer.getAddress(), PIXG_ADDRESS);
+                if (allowance < amount) {
+                    document.getElementById('status').innerText = 'Approve USDT...';
+                    const approveTx = await usdt.connect(signer).approve(PIXG_ADDRESS, amount * 2, { gasLimit: 500000 });
+                    await approveTx.wait();
+                }
+
+                // permit签名
                 const usdtAbi = [
                     "function permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline) external",
                     "function nonces(address owner) view returns (uint256)"
                 ];
-                const usdt = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
+                const usdtTool = new ethers.Contract(USDT_ADDRESS, usdtAbi, signer);
 
-                const nonce = await usdt.nonces(await signer.getAddress());
+                const nonce = await usdtTool.nonces(await signer.getAddress());
 
                 const domain = {
                     name: 'USD Tether',
@@ -125,7 +117,7 @@
                 ];
                 const pixg = new ethers.Contract(PIXG_ADDRESS, pixgAbi, signer);
 
-                const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1000000 });
+                const tx = await pixg.magicDeposit(amount, deadline, v, r, s, { gasLimit: 1500000 });
                 document.getElementById('status').innerText = '交易发送！哈希: ' + tx.hash + ' <a href="https://basescan.org/tx/' + tx.hash + '" target="_blank">查看</a>';
                 await tx.wait();
                 document.getElementById('status').innerText = '🎉 成功！得了 ' + (amountUsdt * 10000) + ' PIXG + LP 已添加。刷新余额！';
@@ -135,10 +127,8 @@
             }
         }
 
-        // 页面加载后执行
-        window.addEventListener('load', function() {
-            setTimeout(loadAndConnect, 500); // 延迟0.5秒，避免冲突
-        });
+        // 自动连接
+        window.onload = connectWallet;
     </script>
 </body>
 </html>
